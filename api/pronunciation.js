@@ -1,35 +1,39 @@
-export default async function handler(req, res) {
+import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+export async function POST(request) {
   try {
-    const { text } = req.body;
+    const formData = await request.formData();
+    const audioFile = formData.get('audio');
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a British English pronunciation coach. Analyse pronunciation and give concise feedback."
-          },
-          {
-            role: "user",
-            content: `Analyse pronunciation for: ${text}`
-          }
-        ]
-      })
+    if (!audioFile) {
+      return NextResponse.json({ error: "No audio file found" }, { status: 400 });
+    }
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-audio-preview",
+      modalities: ["text"],
+      messages: [
+        {
+          role: "system",
+          content: "You are a British pronunciation coach. Listen to the audio and provide brief feedback on the user's British accent and vowel sounds."
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_audio", input_audio: { data: audioFile, format: "wav" } }
+          ]
+        }
+      ]
     });
 
-    const data = await response.json();
-
-    res.status(200).json({
-      result: data.choices[0].message.content
-    });
+    return NextResponse.json({ feedback: response.choices[0].message.content });
 
   } catch (error) {
-    res.status(500).json({ error: "Failed to analyse pronunciation" });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
