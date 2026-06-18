@@ -1,14 +1,3 @@
-// =============================================================
-// pronunciation.js — British English Accent App Backend
-// =============================================================
-
-const express = require("express");
-const router = express.Router();
-
-// =============================================================
-// MASTER WORD LIST — single source of truth
-// Each entry: word, ipa (display string), phonemes (IPA array)
-// =============================================================
 const WORD_LIST = [
   { word: "Wednesday", ipa: "/ˈwɛnzdeɪ/", phonemes: ["w", "ɛ", "n", "z", "d", "eɪ"] },
   { word: "Entrepreneur", ipa: "/ˌɒntrəprəˈnɜː/", phonemes: ["ɒ", "n", "t", "r", "ə", "p", "r", "ə", "ˈnɜː"] },
@@ -58,7 +47,6 @@ const WORD_LIST = [
   { word: "Temperature", ipa: "/ˈtɛmprɪtʃə/", phonemes: ["t", "ɛ", "m", "p", "r", "ɪ", "tʃ", "ə"] },
   { word: "Uncomfortable", ipa: "/ʌnˈkʌmftəbl/", phonemes: ["ʌ", "n", "k", "ʌ", "m", "f", "t", "ə", "b", "l"] },
   { word: "Vulnerability", ipa: "/ˌvʌlnərəˈbɪlɪti/", phonemes: ["v", "ʌ", "l", "n", "ə", "r", "ə", "b", "ɪ", "l", "ɪ", "t", "i"] },
-  { word: "Worcestershire", ipa: "/ˈwʊstəʃə/", phonemes: ["w", "ʊ", "s", "t", "ə", "ʃ", "ə"] },
   { word: "Anaesthesia", ipa: "/ˌænɪsˈθiːziə/", phonemes: ["æ", "n", "ɪ", "s", "θ", "iː", "z", "i", "ə"] },
   { word: "Deteriorate", ipa: "/dɪˈtɪəriəreɪt/", phonemes: ["d", "ɪ", "t", "ɪ", "ə", "r", "i", "ə", "r", "eɪ", "t"] },
   { word: "Exacerbate", ipa: "/ɪɡˈzæsəbeɪt/", phonemes: ["ɪ", "ɡ", "z", "æ", "s", "ə", "b", "eɪ", "t"] },
@@ -67,153 +55,167 @@ const WORD_LIST = [
   { word: "Juxtaposition", ipa: "/ˌdʒʌkstəpəˈzɪʃən/", phonemes: ["dʒ", "ʌ", "k", "s", "t", "ə", "p", "ə", "z", "ɪ", "ʃ", "ən"] },
 ];
 
-// =============================================================
-// LEVENSHTEIN DISTANCE — measures how different two strings are
-// Returns a 0–100 similarity score
-// =============================================================
-function levenshteinSimilarity(a, b) {
-  const m = a.length;
-  const n = b.length;
-
-  // If either string is empty, similarity is 0
-  if (m === 0 || n === 0) return 0;
-
-  // Build distance matrix
-  const dp = Array.from({ length: m + 1 }, (_, i) =>
-    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
-  );
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1];
-      } else {
-        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-      }
-    }
-  }
-
-  const distance = dp[m][n];
-  const maxLen = Math.max(m, n);
-  return Math.round(((maxLen - distance) / maxLen) * 100);
-}
-
-// =============================================================
-// ENDPOINT 1 — GET /api/start-lesson
-// Returns 5 random words for this session (with IPA + phonemes)
-// =============================================================
-router.get("/start-lesson", (req, res) => {
+export const handleStartLesson = (req: any, res: any) => {
   try {
-    // Shuffle a copy of WORD_LIST and pick the first 5
     const shuffled = [...WORD_LIST].sort(() => Math.random() - 0.5);
     const sessionWords = shuffled.slice(0, 5);
     return res.status(200).json({ words: sessionWords });
   } catch (error) {
-    console.error("Error starting lesson:", error);
     return res.status(500).json({ error: "Failed to start lesson" });
   }
-});
+};
 
-// =============================================================
-// ENDPOINT 2 — POST /api/analyze-pronunciation
-// Scores the user's transcribed speech against the target word
-// and returns AI-generated feedback via OpenAI gpt-4o-mini
-// =============================================================
-router.post("/analyze-pronunciation", async (req, res) => {
+export const handleAnalyzePronunciation = async (req: any, res: any) => {
   try {
-    const { targetWord, transcribedText } = req.body;
-
-    // ── 1. Validate inputs ──────────────────────────────────
-    if (!targetWord || transcribedText === undefined || transcribedText === null) {
-      return res.status(400).json({ error: "Missing targetWord or transcribedText" });
+    const contentType = req.headers["content-type"] || "";
+    if (!contentType.includes("multipart/form-data")) {
+      return res.status(400).json({ error: "Expected multipart/form-data" });
     }
 
+    const targetWord = req.query.targetWord as string;
+    if (!targetWord) {
+      return res.status(400).json({ error: "Missing targetWord" });
+    }
+
+    const { audioBuffer } = await parseFormData(req);
+
+    if (!audioBuffer) {
+      return res.status(400).json({ error: "Missing audio" });
+    }
+
+    const isSilent = audioBuffer.length < 100;
     const targetLower = String(targetWord).toLowerCase().trim();
-    const transcribedLower = String(transcribedText).toLowerCase().trim();
-
-    // ── 2. Silence detection — hard 0% ─────────────────────
-    const isSilent = transcribedLower.length === 0;
-
-    // ── 3. Look up word data from master list ───────────────
-    const wordData = WORD_LIST.find(
-      (w) => w.word.toLowerCase() === targetLower
-    );
-    const phonemeList = wordData ? wordData.phonemes : targetLower.split("");
-
-    // ── 4. Score — Levenshtein similarity, no clamping ─────
-    let accuracy = 0;
-    if (!isSilent) {
-      accuracy = levenshteinSimilarity(transcribedLower, targetLower);
-    }
-    // accuracy is now genuinely 0–100, no artificial floor or ceiling
-
-    // ── 5. Map phonemes to correct/incorrect ────────────────
-    // Distribute correctness proportionally across phonemes
-    const correctCount = Math.round((phonemeList.length * accuracy) / 100);
-    const phonemes = phonemeList.map((sound, idx) => ({
-      sound,
-      correct: !isSilent && idx < correctCount,
-    }));
-
-    // ── 6. AI-generated feedback via OpenAI ─────────────────
-    let explanation = "";
+    const wordData = WORD_LIST.find((w) => w.word.toLowerCase() === targetLower);
+    const phonemeList = wordData ? wordData.phonemes : [];
 
     if (isSilent) {
-      explanation =
-        "No speech was detected in your recording. Please check your microphone and try speaking the word clearly into it.";
-    } else {
-      try {
-        const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            max_tokens: 120,
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a British English pronunciation coach. Give one short, friendly, specific piece of feedback (2–3 sentences max). Focus on the sounds the user got wrong and how to improve them. Use simple language. Do not mention scores or percentages.",
-              },
-              {
-                role: "user",
-                content: `The user was asked to say the word "${targetWord}" (British English). The speech recognition heard: "${transcribedText}". Their accuracy score was ${accuracy}%. Give them specific, encouraging feedback on how to improve their pronunciation.`,
-              },
-            ],
-          }),
-        });
-
-        const openaiData = await openaiRes.json();
-        explanation =
-          openaiData?.choices?.[0]?.message?.content?.trim() || "";
-      } catch (aiError) {
-        console.error("OpenAI call failed:", aiError);
-      }
-
-      // Fallback if OpenAI fails or returns empty
-      if (!explanation) {
-        if (accuracy >= 90) {
-          explanation = `Excellent! Your pronunciation of "${targetWord}" was very close to the target. Keep it up!`;
-        } else if (accuracy >= 70) {
-          explanation = `Good effort on "${targetWord}". You got most sounds right — focus on the ones highlighted in red.`;
-        } else if (accuracy >= 40) {
-          explanation = `You're making progress with "${targetWord}". Try slowing down and pronouncing each sound carefully.`;
-        } else {
-          explanation = `It looks like what was heard didn't quite match "${targetWord}". Try again — speak slowly and clearly.`;
-        }
-      }
+      const phonemes = phonemeList.map((sound) => ({ sound, correct: false }));
+      return res.status(200).json({
+        accuracy: 0,
+        phonemes,
+        explanation: "No speech was detected in your recording. Please check your microphone and try speaking the word clearly.",
+        isSilent: true,
+        wordData: wordData || null,
+      });
     }
 
-    // ── 7. Send response ────────────────────────────────────
+    let transcribedText = "";
+    try {
+      const whisperFormData = new FormData();
+      const audioBlob = new Blob([audioBuffer], { type: "audio/webm" });
+      whisperFormData.append("file", audioBlob, "recording.webm");
+      whisperFormData.append("model", "whisper-1");
+      whisperFormData.append("language", "en");
+
+      const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: whisperFormData,
+      });
+
+      const whisperData = await whisperRes.json();
+      transcribedText = whisperData?.text?.trim() || "";
+    } catch (whisperError) {
+      console.error("Whisper transcription failed:", whisperError);
+      return res.status(500).json({ error: "Could not transcribe audio. Please try recording again." });
+    }
+
+    if (!transcribedText) {
+      const phonemes = phonemeList.map((sound) => ({ sound, correct: false }));
+      return res.status(200).json({
+        accuracy: 0,
+        phonemes,
+        explanation: "No speech was detected in your recording. Please speak more clearly and try again.",
+        isSilent: true,
+        wordData: wordData || null,
+      });
+    }
+
+    const targetIPA = wordData ? wordData.ipa : "";
+    const targetPhonemes = phonemeList.join(", ");
+
+    let phonemes: { sound: string; correct: boolean }[] = [];
+    let accuracy = 0;
+    let explanation = "";
+
+    try {
+      const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 400,
+          messages: [
+            {
+              role: "system",
+              content: `You are a British English pronunciation expert. Your job is to:
+1. Convert the user's transcribed speech into its most likely IPA phoneme sequence (British English)
+2. Compare it against the target word's IPA phonemes one by one
+3. Return a JSON object — nothing else, no markdown, no explanation outside the JSON
+
+The JSON must have exactly this shape:
+{
+  "phonemes": [
+    { "sound": "<IPA symbol from target list>", "correct": true or false },
+    ...
+  ],
+  "explanation": "<2-3 sentence friendly coaching tip in British English, no percentages>"
+}
+
+Rules:
+- Always return exactly the same number of phonemes as in the target list, in the same order
+- Use the exact IPA symbols from the target list — do not invent new ones
+- Mark a phoneme correct if the user produced a close enough sound (allow for accent variations)
+- Mark it incorrect if the user clearly missed or substituted it with a very different sound
+- The explanation should focus on which sounds to improve and how`,
+            },
+            {
+              role: "user",
+              content: `Target word: "${targetWord}"
+Target IPA: ${targetIPA}
+Target phonemes in order: [${targetPhonemes}]
+Whisper heard the user say: "${transcribedText}"
+
+Compare the user's pronunciation against each target phoneme and return the JSON.`,
+            },
+          ],
+        }),
+      });
+
+      const openaiData = await openaiRes.json();
+      const rawContent = openaiData?.choices?.[0]?.message?.content?.trim() || "";
+      const cleaned = rawContent.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+
+      phonemes = parsed.phonemes || [];
+      explanation = parsed.explanation || "";
+
+      if (phonemes.length > 0) {
+        const correctCount = phonemes.filter((p: any) => p.correct === true).length;
+        accuracy = Math.round((correctCount / phonemes.length) * 100);
+      }
+    } catch (aiError) {
+      console.error("GPT-4o-mini call failed:", aiError);
+      phonemes = phonemeList.map((sound) => ({ sound, correct: false }));
+      accuracy = 0;
+      explanation = `We had trouble analysing your pronunciation of "${targetWord}". Please try again.`;
+    }
+
+    if (phonemes.length === 0 && phonemeList.length > 0) {
+      phonemes = phonemeList.map((sound) => ({ sound, correct: false }));
+      accuracy = 0;
+    }
+
     return res.status(200).json({
       accuracy,
       phonemes,
       explanation,
-      isSilent,
-      // Pass word metadata back so the frontend always has it
+      isSilent: false,
       wordData: wordData || null,
     });
   } catch (error) {
@@ -223,6 +225,50 @@ router.post("/analyze-pronunciation", async (req, res) => {
       details: error instanceof Error ? error.message : String(error),
     });
   }
-});
+};
 
-module.exports = router;
+function parseFormData(req: any): Promise<{ audioBuffer: Buffer | null }> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    req.on("end", () => {
+      try {
+        const body = Buffer.concat(chunks);
+        const bodyStr = body.toString("binary");
+
+        const contentType = req.headers["content-type"] || "";
+        const boundaryMatch = contentType.match(/boundary=(.+)$/);
+        if (!boundaryMatch) {
+          return resolve({ audioBuffer: null });
+        }
+
+        const boundary = "--" + boundaryMatch[1];
+        const parts = bodyStr.split(boundary).slice(1, -1);
+
+        let audioBuffer: Buffer | null = null;
+
+        for (const part of parts) {
+          const headerEnd = part.indexOf("\r\n\r\n");
+          if (headerEnd === -1) continue;
+
+          const headers = part.substring(0, headerEnd);
+          const content = part.substring(headerEnd + 4, part.length - 2);
+
+          if (headers.includes('name="audio"')) {
+            audioBuffer = Buffer.from(content, "binary");
+          }
+        }
+
+        resolve({ audioBuffer });
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    req.on("error", reject);
+  });
+}
