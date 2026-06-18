@@ -54,7 +54,13 @@ const WORD_LIST = [
   { word: "Indefatigable", ipa: "/ˌɪndɪˈfætɪɡəbl/", phonemes: ["ɪ", "n", "d", "ɪ", "f", "æ", "t", "ɪ", "ɡ", "ə", "b", "l"] },
   { word: "Juxtaposition", ipa: "/ˌdʒʌkstəpəˈzɪʃən/", phonemes: ["dʒ", "ʌ", "k", "s", "t", "ə", "p", "ə", "z", "ɪ", "ʃ", "ən"] },
 ];
-
+export default async function handler(req: any, res: any) {
+  const action = req.query.action;
+  if (action === "start-lesson") {
+    return handleStartLesson(req, res);
+  }
+  return handleAnalyzePronunciation(req, res);
+}
 export const handleStartLesson = (req: any, res: any) => {
   try {
     const shuffled = [...WORD_LIST].sort(() => Math.random() - 0.5);
