@@ -6,7 +6,7 @@ export default function Welcome() {
   const handleStartLesson = async () => {
     try {
       sessionStorage.removeItem("dynamic_lesson_words");
-      const response = await fetch("/api/start-lesson");
+      const response = await fetch("/api/analyze-pronunciation?action=start-lesson");
       const data = await response.json();
       if (!data.words) {
         alert("Failed to load words from server: " + JSON.stringify(data));
