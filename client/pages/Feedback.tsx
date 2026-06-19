@@ -184,6 +184,14 @@ export default function Feedback() {
         <div className="w-full max-w-sm mx-auto">
           <button
             onClick={() => {
+              pendo.track("word_practice_retried", {
+                word: currentWord?.word,
+                wordIndex: index,
+                previousAccuracyScore: accuracy,
+                previousCorrectPhonemes: phonemes.filter((p: any) => p.correct === true).length,
+                previousTotalPhonemes: phonemes.length,
+              });
+
               sessionStorage.removeItem(`analysis_${index}`);
               navigate(`/practice/${index}`);
             }}
