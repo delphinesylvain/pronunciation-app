@@ -27,6 +27,8 @@ export default function Welcome() {
             <span className="text-white text-3xl font-bold">ʃə</span>
           </div>
           <h1 className="text-4xl font-bold text-slate-900 leading-tight">
+            BritSpeak
+            <br />
             Perfect your
             <br />
             British accent.
