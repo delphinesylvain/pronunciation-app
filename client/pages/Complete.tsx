@@ -34,11 +34,14 @@ export default function Complete() {
     }
 
     // Calculate the overall average across the completed words
-    if (countedWords > 0) {
-      setAverageAccuracy(Math.round(totalLessonPercentage / countedWords));
-    } else {
-      setAverageAccuracy(0);
-    }
+    const finalAccuracy = countedWords > 0 ? Math.round(totalLessonPercentage / countedWords) : 0;
+    setAverageAccuracy(finalAccuracy);
+
+    pendo.track("lesson_completed", {
+      averageAccuracy: finalAccuracy,
+      wordsCompleted: countedWords,
+      totalWords: 5,
+    });
   }, []);
 
   return (

@@ -13,6 +13,12 @@ export default function Welcome() {
         return;
       }
       sessionStorage.setItem("dynamic_lesson_words", JSON.stringify(data.words));
+
+      pendo.track("lesson_started", {
+        wordCount: data.words.length,
+        assignedWords: data.words.map((w: any) => w.word).join(", "),
+      });
+
       navigate("/practice/1");
     } catch (error) {
       alert("Error starting lesson: " + (error instanceof Error ? error.message : String(error)));

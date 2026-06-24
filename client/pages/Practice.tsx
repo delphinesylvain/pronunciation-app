@@ -135,6 +135,18 @@ export default function Practice() {
         JSON.stringify(responseData)
       );
 
+      const phonemesArr = Array.isArray(responseData.phonemes) ? responseData.phonemes : [];
+      const correctCount = phonemesArr.filter((p: any) => p.correct === true).length;
+
+      pendo.track("pronunciation_analyzed", {
+        word: currentWord.word,
+        wordIndex: currentWordIndex + 1,
+        accuracyScore: responseData.accuracy,
+        totalPhonemes: phonemesArr.length,
+        correctPhonemes: correctCount,
+        isSilent: responseData.isSilent === true,
+      });
+
       navigate(`/feedback/${currentWordIndex + 1}`);
     } catch (error) {
       console.error("Error analyzing pronunciation:", error);
@@ -182,6 +194,14 @@ export default function Practice() {
   const handleStopRecording = () => {
     setIsRecording(false);
     setHasRecording(true);
+
+    pendo.track("pronunciation_recorded", {
+      word: currentWord.word,
+      wordIndex: currentWordIndex + 1,
+      recordingDurationSeconds: recordingTime,
+      totalWordsInLesson: lessonWords.length,
+    });
+
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
     }
